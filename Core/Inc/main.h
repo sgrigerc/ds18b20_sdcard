@@ -58,7 +58,7 @@ void Error_Handler(void);
 
 /* Private defines -----------------------------------------------------------*/
 /* USER CODE BEGIN Private defines */
-
+#define MAX_SENSORS 4
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

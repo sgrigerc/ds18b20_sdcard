@@ -54,12 +54,25 @@
 
 /* USER CODE BEGIN PV */
 
-char str1[60];  // Переменная для вывода через UART
 uint16_t raw_temper;
-float temper;
+//float temper;
+//float temper_1 = 0.0f, temper_2 = 0.0f, temper_3 = 0.0f, temper_4 = 0.0f;
+float temperatures[MAX_SENSORS] = {0}; 
 uint8_t dt[8];
 
 extern RTC_HandleTypeDef hrtc;
+
+uint8_t Dev_ID[8][8]={0};
+uint8_t Dev_Cnt;
+char str1[60];  // Переменная для вывода через UART
+
+FATFS fileSystem;
+FIL testFile;
+
+//
+char c;
+uint8_t i;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -81,8 +94,9 @@ extern char SDPath[4];
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+	
 	uint8_t status;
-	char c;
+	//char c;
 	
   /* USER CODE END 1 */
 
@@ -114,33 +128,46 @@ int main(void)
 	
 	// SD card
 	
-	FATFS fileSystem;
-  FIL testFile;
   uint8_t testBuffer[16] = "SD write success";
   UINT testBytes;
-  FRESULT res;
 	
-	/*
-	/// тестовая запись на sd
-	
-  if(f_mount(&fileSystem, SDPath, 1) == FR_OK)
-  {
-    uint8_t path[13] = "tess.txt";
-    path[12] = '\0';
-    res = f_open(&testFile, (char*)path, FA_WRITE | FA_CREATE_ALWAYS);
-    res = f_write(&testFile, testBuffer, 16, &testBytes);
-    res = f_close(&testFile);
-  }
-	*/
+	FRESULT res = f_mount(&fileSystem, SDPath, 1);
+	if (res != FR_OK) {
+			sprintf(str1, "SD mount failed: %d\r\n", res);
+			HAL_UART_Transmit(&huart1, (uint8_t*)str1, strlen(str1), 1000);
+	}
+
 	
 	// ds18b20 датчик температуры
 	
 	port_init();
-	status = ds18b20_init(SKIP_ROM);
-	sprintf(str1,"Init Status: %d\r\n",status);
-	HAL_UART_Transmit(&huart1,(uint8_t*)str1,strlen(str1),0x1000);
+	status = ds18b20_init(NO_SKIP_ROM);
+	//sprintf(str1, "Init Status: %d\r\n", status);
+	//HAL_UART_Transmit(&huart1,(uint8_t*)str1, strlen(str1), 0x1000);
+	//sprintf(str1,"Dev count: %d\r\n", Dev_Cnt);
+	//HAL_UART_Transmit(&huart1,(uint8_t*)str1, strlen(str1), 0x1000);
 	HAL_TIM_Base_Start(&htim4);
 	
+	
+	//HAL_UART_Transmit(&huart1,(uint8_t*)str1,strlen(str1),0x1000);
+	//for(i = 1; i<=Dev_Cnt; i++)
+	//{
+		//sprintf(str1, "Device %d\r\n", i);
+		//HAL_UART_Transmit(&huart1,(uint8_t*)str1, strlen(str1), 0x1000);
+		//sprintf(str1,"ROM RAW: %02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+		//	Dev_ID[i-1][0], Dev_ID[i-1][1], Dev_ID[i-1][2], Dev_ID[i-1][3],
+		//	Dev_ID[i-1][4], Dev_ID[i-1][5], Dev_ID[i-1][6], Dev_ID[i-1][7]);
+		//HAL_UART_Transmit(&huart1,(uint8_t*)str1,strlen(str1),0x1000);
+		//sprintf(str1,"Family CODE: 0x%02X\r\n", Dev_ID[i-1][0]);
+		//HAL_UART_Transmit(&huart1,(uint8_t*)str1,strlen(str1),0x1000);
+		//sprintf(str1,"ROM CODE: 0x%02X%02X%02X%02X%02X%02X\r\n", Dev_ID[i-1][6], Dev_ID[i-1][5],
+		//	Dev_ID[i-1][4], Dev_ID[i-1][3], Dev_ID[i-1][2], Dev_ID[i-1][1]);
+		//HAL_UART_Transmit(&huart1,(uint8_t*)str1,strlen(str1),0x1000);
+		//sprintf(str1,"CRC: 0x%02X\r\n", Dev_ID[i-1][7]);
+		//HAL_UART_Transmit(&huart1,(uint8_t*)str1,strlen(str1),0x1000);
+	//}
+	//sprintf(str1, "Found %d DS18B20 sensor(s)\r\n", Dev_Cnt);
+	//HAL_UART_Transmit(&huart1, (uint8_t*)str1, strlen(str1), 1000);
 	
 	// Дата и время
 		
@@ -160,7 +187,6 @@ int main(void)
 
 	HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
 	HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
-
 	
 	
   /* USER CODE END 2 */
@@ -175,68 +201,85 @@ int main(void)
 		
 		//�?змерение температуры
 		
-		ds18b20_MeasureTemperCmd(SKIP_ROM, 0);
+		for (i = 1; i <= Dev_Cnt; i++) ds18b20_MeasureTemperCmd(NO_SKIP_ROM, i);
 		HAL_Delay(800);
-		ds18b20_ReadStratcpad(SKIP_ROM, dt, 0);
-		sprintf(str1,"STRATHPAD: %02X %02X %02X %02X %02X %02X %02X %02X; ",
-		dt[0], dt[1], dt[2], dt[3], dt[4], dt[5], dt[6], dt[7]);
-		HAL_UART_Transmit(&huart1,(uint8_t*)str1,strlen(str1),0x1000);
-		raw_temper = ((uint16_t)dt[1]<<8)|dt[0];
-		//if(ds18b20_GetSign(raw_temper)) c='-';
-		//else c='+';
-		char sign = ds18b20_GetSign(raw_temper) ? '-' : '+';
-		temper = ds18b20_Convert(raw_temper);
-		//sprintf(str1,"Raw t: 0x%04X; t: %c%.2f\r\n", raw_temper, c, temper);
-		HAL_UART_Transmit(&huart1,(uint8_t*)str1,strlen(str1),0x1000);		
+		
+		for (int idx = 0; idx < MAX_SENSORS; idx++) temperatures[idx] = 0.0f;
+		
+		for(i = 1; i <= Dev_Cnt && i <= MAX_SENSORS; i++)
+		{
+			ds18b20_ReadStratcpad(NO_SKIP_ROM, dt, i);
+			//sprintf(str1,"STRATHPAD %d: %02X %02X %02X %02X %02X %02X %02X %02X; ",
+			//	i, dt[0], dt[1], dt[2], dt[3], dt[4], dt[5], dt[6], dt[7]);
+			//HAL_UART_Transmit(&huart1,(uint8_t*)str1,strlen(str1),0x1000);
+			raw_temper = ((uint16_t)dt[1]<<8)|dt[0];
+			char sign = ds18b20_GetSign(raw_temper) ? '-' : '+';
+			float temp_val = ds18b20_Convert(raw_temper);
+			if (sign == '-') temp_val = -temp_val;
+			temperatures[i - 1] = temp_val;
+			
+			//sprintf(str1,"Raw t: 0x%04X; t: %c%.2f\r\n", raw_temper, c, temper);
+			//HAL_UART_Transmit(&huart1,(uint8_t*)str1,strlen(str1),0x1000);
+		}
+		HAL_Delay(150);
+		
 		
 		// Запись на sd card
-
-		FRESULT res;
-		res = f_mount(&fileSystem, SDPath, 1);
-		if (res == FR_OK) {
-				FIL testFile;
-				res = f_open(&testFile, "temp_log.txt", FA_WRITE | FA_OPEN_APPEND);
-				if (res == FR_OK) {
-
-						RTC_TimeTypeDef sTime = {0};
-						RTC_DateTypeDef sDate = {0};
-						
-						if (HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN) == HAL_OK &&
-								HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN) == HAL_OK) {
 		
-								int16_t whole = (int16_t)temper;
-								int16_t frac = (int16_t)((temper - whole) * (temper >= 0 ? 100 : -100) + 0.5f);
-								if (frac >= 100) {
-										frac = 0;
-										whole += (sign == '+') ? 1 : -1;
-								}
+    FRESULT res = f_open(&testFile, "temp_log.txt", FA_WRITE | FA_OPEN_APPEND);
+    if (res == FR_OK) {
+			RTC_TimeTypeDef sTime = {0};
+			RTC_DateTypeDef sDate = {0};
 
-								// дата время температура
-								f_printf(&testFile, "[%02d-%02d-%02d %02d:%02d:%02d] %c%d.%02d C\r\n",
-												 2000 + sDate.Year, sDate.Month, sDate.Date,
-												 sTime.Hours, sTime.Minutes, sTime.Seconds,
-												 sign, whole, frac);
+			if (HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN) == HAL_OK &&
+					HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN) == HAL_OK) {
 
-						} else {
-								// Если ошибка RTC - без времени
-								f_printf(&testFile, "[--:--:--] %c%d.%02d C\r\n", sign, (int16_t)temper, 0);
-						}
+				// Формат: [ГГГГ-ММ-ДД ЧЧ:ММ:СС] T1 T2 .. T8
+        char log_line[200] = {0};
+        int len = snprintf(log_line, sizeof(log_line),
+            "[%04d-%02d-%02d %02d:%02d:%02d]",
+            2000 + sDate.Year, sDate.Month, sDate.Date,
+            sTime.Hours, sTime.Minutes, sTime.Seconds);
 
-						f_sync(&testFile);
-						f_close(&testFile);
-						HAL_UART_Transmit(&huart1, (uint8_t*)"Saved to SD\r\n", 13, 1000);
+				// Запись на sd card
+				for (int idx = 0; idx < Dev_Cnt && idx < MAX_SENSORS; idx++) {
+            float t = temperatures[idx];
+            int16_t whole = (int16_t)t;
+            int16_t frac = (int16_t)((t - whole) * (t >= 0 ? 100 : -100) + (t >= 0 ? 0.5f : -0.5f));
+            if (frac >= 100) { frac = 0; whole += (t >= 0) ? 1 : -1; }
+            if (frac < 0) frac = -frac;
+            if (whole < 0) whole = -whole;
 
-				} else {
-						sprintf(str1, "f_open failed: %d\r\n", res);
-						HAL_UART_Transmit(&huart1, (uint8_t*)str1, strlen(str1), 1000);
-				}
-		} else {
-				sprintf(str1, "f_mount failed: %d\r\n", res);
-				HAL_UART_Transmit(&huart1, (uint8_t*)str1, strlen(str1), 1000);
+            len += snprintf(log_line + len, sizeof(log_line) - len,
+                " T%d=%s%d.%02d", idx + 1,
+                (temperatures[idx] >= 0) ? "+" : "-",
+                whole, frac);
+        }
+				
+				strcat(log_line, " C\r\n");
+        f_puts(log_line, &testFile);
+				
+			} else {
+				// Без времени
+        char log_line[100] = "[--:--:--]";
+        for (int idx = 0; idx < Dev_Cnt && idx < MAX_SENSORS; idx++) {
+            char temp_str[20];
+            snprintf(temp_str, sizeof(temp_str), " T%d=%.2f", idx + 1, temperatures[idx]);
+            strcat(log_line, temp_str);
+        }
+        strcat(log_line, " C\r\n");
+        f_puts(log_line, &testFile);
+			}
+
+			f_sync(&testFile);
+			f_close(&testFile);
+			HAL_UART_Transmit(&huart1, (uint8_t*)"Saved to SD\r\n", 13, 1000);
+			}
+			
+			HAL_Delay(3700);  // Каждые 5 секунды (3700)
 		}
-		
-    HAL_Delay(1000);  // Каждые 5 секунды (3700)
-  }
+  
+  
   /* USER CODE END 3 */
 }
 
